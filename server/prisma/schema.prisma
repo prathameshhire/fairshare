@@ -1,0 +1,69 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  name      String
+  avatarUrl String?
+  createdAt DateTime @default(now())
+
+  sentFriendRequests     Friendship[] @relation("requester")
+  receivedFriendRequests Friendship[] @relation("addressee")
+  expensesPaid           Expense[]    @relation("paidBy")
+  expenseParticipants    ExpenseParticipant[]
+  settlementsPaid        Settlement[] @relation("payer")
+  settlementsReceived    Settlement[] @relation("payee")
+}
+
+model Friendship {
+  id          String   @id @default(uuid())
+  requesterId String
+  addresseeId String
+  status      String   @default("pending")
+  createdAt   DateTime @default(now())
+
+  requester User @relation("requester", fields: [requesterId], references: [id])
+  addressee User @relation("addressee", fields: [addresseeId], references: [id])
+}
+
+model Expense {
+  id          String   @id @default(uuid())
+  description String
+  amount      Decimal
+  currency    String   @default("USD")
+  paidById    String
+  splitType   String   @default("even")
+  createdAt   DateTime @default(now())
+
+  paidBy       User                 @relation("paidBy", fields: [paidById], references: [id])
+  participants ExpenseParticipant[]
+}
+
+model ExpenseParticipant {
+  id         String   @id @default(uuid())
+  expenseId  String
+  userId     String
+  amountOwed Decimal
+  isSettled  Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  expense Expense @relation(fields: [expenseId], references: [id])
+  user    User    @relation(fields: [userId], references: [id])
+}
+
+model Settlement {
+  id        String   @id @default(uuid())
+  payerId   String
+  payeeId   String
+  amount    Decimal
+  createdAt DateTime @default(now())
+
+  payer User @relation("payer", fields: [payerId], references: [id])
+  payee User @relation("payee", fields: [payeeId], references: [id])
+}
