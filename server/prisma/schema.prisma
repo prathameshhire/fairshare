@@ -7,11 +7,12 @@ datasource db {
 }
 
 model User {
-  id        String   @id @default(uuid())
-  email     String   @unique
-  name      String
-  avatarUrl String?
-  createdAt DateTime @default(now())
+  id           String   @id @default(uuid())
+  email        String   @unique
+  name         String
+  avatarUrl    String?
+  passwordHash String?  // nullable so existing seed users are not broken
+  createdAt    DateTime @default(now())
 
   sentFriendRequests     Friendship[] @relation("requester")
   receivedFriendRequests Friendship[] @relation("addressee")
