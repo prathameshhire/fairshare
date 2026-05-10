@@ -11,7 +11,7 @@ model User {
   email        String   @unique
   name         String
   avatarUrl    String?
-  passwordHash String?  // nullable so existing seed users are not broken
+  passwordHash String   // required — every user must have a password (registration enforces this)
   createdAt    DateTime @default(now())
 
   sentFriendRequests     Friendship[] @relation("requester")

@@ -10,6 +10,10 @@ export function RegisterPage() {
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  // Confirm password — has to match `password` before we hit the server.
+  // This prevents a typo'd password silently locking the user out of an account
+  // they never knew they made.
+  const [confirmPassword, setConfirmPassword] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
@@ -17,9 +21,13 @@ export function RegisterPage() {
     e.preventDefault()
     setErrorMessage(null)
 
-    // Basic client-side validation before even hitting the server
+    // Client-side validation — fail fast before bothering the server
     if (password.length < 6) {
       setErrorMessage('Password must be at least 6 characters.')
+      return
+    }
+    if (password !== confirmPassword) {
+      setErrorMessage("Passwords don't match.")
       return
     }
 
@@ -52,7 +60,6 @@ export function RegisterPage() {
               </label>
               <input
                 type="text"
-                placeholder="Alice Smith"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 required
@@ -66,7 +73,6 @@ export function RegisterPage() {
               </label>
               <input
                 type="email"
-                placeholder="you@example.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
@@ -80,9 +86,21 @@ export function RegisterPage() {
               </label>
               <input
                 type="password"
-                placeholder="At least 6 characters"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
+                required
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Confirm password
+              </label>
+              <input
+                type="password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
                 required
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
               />

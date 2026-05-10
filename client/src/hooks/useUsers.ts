@@ -1,5 +1,8 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { getUsers, getUser, getUserFriends, createUser } from '../lib/api'
+import { useQuery } from '@tanstack/react-query'
+import { getUsers, getUser, getUserFriends } from '../lib/api'
+
+// Note: useCreateUser was removed in Session 7. With JWT auth, users create
+// themselves via POST /api/auth/register — there's no admin "add person" flow.
 
 export function useUsers() {
   return useQuery({
@@ -21,15 +24,5 @@ export function useUserFriends(userId: string | null) {
     queryKey: ['friends', userId],
     queryFn: () => getUserFriends(userId!),
     enabled: !!userId,
-  })
-}
-
-export function useCreateUser() {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: (data: { email: string; name: string }) => createUser(data),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['users'] })
-    },
   })
 }

@@ -51,7 +51,8 @@ export interface Settlement {
 export interface CreateExpenseInput {
   description: string
   amount: number
-  paidById: string
+  // Note: paidById is NOT in this shape. The server reads it from the JWT —
+  // the logged-in user is always the payer.
   participantIds: string[]
 }
 

@@ -9,11 +9,12 @@ export function useUserFriendships(userId: string | null) {
   })
 }
 
+// Friend requests are sent by EMAIL — the server looks up the recipient.
+// Throws if no account has that email (the form will catch it and show an error).
 export function useSendFriendRequest() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ requesterId, addresseeId }: { requesterId: string; addresseeId: string }) =>
-      createFriendship(requesterId, addresseeId),
+    mutationFn: (email: string) => createFriendship(email),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['friendships'] })
       qc.invalidateQueries({ queryKey: ['friends'] })

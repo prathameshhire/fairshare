@@ -7,7 +7,7 @@ import { ExpensesPage } from './pages/ExpensesPage'
 import { ExpenseDetailPage } from './pages/ExpenseDetailPage'
 import { AddExpensePage } from './pages/AddExpensePage'
 import { BalancesPage } from './pages/BalancesPage'
-import { UsersPage } from './pages/UsersPage'
+import { FriendsPage } from './pages/FriendsPage'
 
 // How the routing is structured:
 //
@@ -34,7 +34,7 @@ export default function App() {
             <Route path="expenses/new" element={<AddExpensePage />} />
             <Route path="expenses/:id" element={<ExpenseDetailPage />} />
             <Route path="balances" element={<BalancesPage />} />
-            <Route path="users" element={<UsersPage />} />
+            <Route path="friends" element={<FriendsPage />} />
           </Route>
         </Route>
       </Routes>

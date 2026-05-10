@@ -81,10 +81,13 @@ export const createExpense = (data: CreateExpenseInput) =>
 
 // ── Friendships ────────────────────────────────────────────────────────────
 
-export const createFriendship = (requesterId: string, addresseeId: string) =>
+// Send a friend request by the addressee's email.
+// Server: requesterId comes from JWT; addressee is looked up by email.
+// Throws if no user has that email (404).
+export const createFriendship = (email: string) =>
   request<Friendship>('/api/friendships', {
     method: 'POST',
-    body: JSON.stringify({ requesterId, addresseeId }),
+    body: JSON.stringify({ email }),
   })
 
 export const updateFriendship = (id: string, status: 'accepted' | 'declined') =>

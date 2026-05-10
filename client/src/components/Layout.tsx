@@ -50,7 +50,7 @@ export function Layout() {
               Balances
             </NavLink>
             <NavLink
-              to="/users"
+              to="/friends"
               className={({ isActive }) =>
                 `px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
                   isActive
@@ -59,7 +59,7 @@ export function Layout() {
                 }`
               }
             >
-              People
+              Friends
             </NavLink>
           </div>
 

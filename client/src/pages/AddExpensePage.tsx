@@ -1,18 +1,23 @@
 import { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
-import { useUsers } from '../hooks/useUsers'
+import { useUserFriends } from '../hooks/useUsers'
 import { useCreateExpense } from '../hooks/useExpenses'
 import { useAuthStore } from '../store/useAuthStore'
 
 export function AddExpensePage() {
   const navigate = useNavigate()
-  const { data: users } = useUsers()
-  const currentUserId = useAuthStore((s) => s.user?.id ?? null)
+  const currentUser = useAuthStore((s) => s.user)
+  const currentUserId = currentUser?.id ?? null
+  // Only your accepted friends are eligible to split with — not every user on the platform.
+  const { data: friends = [] } = useUserFriends(currentUserId)
+  // The participant picker shows: yourself first, then your friends.
+  const splitOptions = currentUser ? [currentUser, ...friends] : friends
   const createExpense = useCreateExpense()
 
   const [description, setDescription] = useState('')
   const [amount, setAmount] = useState('')
-  const [paidById, setPaidById] = useState(currentUserId ?? '')
+  // Default participants includes the logged-in user — most expenses include the payer.
+  // They can uncheck themselves if they paid for someone else without taking part.
   const [participantIds, setParticipantIds] = useState<string[]>(
     currentUserId ? [currentUserId] : [],
   )
@@ -33,13 +38,13 @@ export function AddExpensePage() {
 
     if (!description.trim()) return alert('Please enter a description.')
     if (!amount || Number(amount) <= 0) return alert('Please enter a valid amount.')
-    if (!paidById) return alert('Please select who paid.')
     if (participantIds.length === 0) return alert('Please select at least one participant.')
 
+    // Note: we don't send paidById — the server reads it from the JWT.
+    // The logged-in user is always the payer in V1.
     await createExpense.mutateAsync({
       description: description.trim(),
       amount: Number(amount),
-      paidById,
       participantIds,
     })
 
@@ -86,32 +91,30 @@ export function AddExpensePage() {
           />
         </div>
 
-        {/* Paid by */}
+        {/* Paid by — locked to the logged-in user (per V1: only the payer can log) */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
             Paid by
           </label>
-          <select
-            value={paidById}
-            onChange={(e) => setPaidById(e.target.value)}
-            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400 bg-white"
-          >
-            <option value="">Select person…</option>
-            {users?.map((u) => (
-              <option key={u.id} value={u.id}>
-                {u.name}
-              </option>
-            ))}
-          </select>
+          <div className="w-full border border-gray-200 bg-gray-50 rounded-lg px-3 py-2 text-sm text-gray-700">
+            You ({currentUser?.name})
+          </div>
         </div>
 
-        {/* Participants */}
+        {/* Participants — yourself + your friends only */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">
             Split between
           </label>
+
+          {splitOptions.length === 1 && (
+            <p className="text-sm text-gray-500 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 mb-2">
+              You don't have any friends yet — <Link to="/friends" className="text-green-600 hover:underline">add some</Link> to split expenses with them.
+            </p>
+          )}
+
           <div className="flex flex-col gap-2">
-            {users?.map((u) => (
+            {splitOptions.map((u) => (
               <label
                 key={u.id}
                 className={`flex items-center gap-3 border rounded-lg px-3 py-2 cursor-pointer transition-colors ${
@@ -126,7 +129,12 @@ export function AddExpensePage() {
                   onChange={() => toggleParticipant(u.id)}
                   className="accent-green-600"
                 />
-                <span className="text-sm font-medium text-gray-800">{u.name}</span>
+                <span className="text-sm font-medium text-gray-800">
+                  {u.name}
+                  {u.id === currentUserId && (
+                    <span className="ml-2 text-xs text-gray-400">(you)</span>
+                  )}
+                </span>
               </label>
             ))}
           </div>
