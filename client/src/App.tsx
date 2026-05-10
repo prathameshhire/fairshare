@@ -5,7 +5,7 @@ import { LoginPage } from './pages/LoginPage'
 import { RegisterPage } from './pages/RegisterPage'
 import { ExpensesPage } from './pages/ExpensesPage'
 import { ExpenseDetailPage } from './pages/ExpenseDetailPage'
-import { AddExpensePage } from './pages/AddExpensePage'
+import { ExpenseFormPage } from './pages/ExpenseFormPage'
 import { BalancesPage } from './pages/BalancesPage'
 import { FriendsPage } from './pages/FriendsPage'
 
@@ -31,8 +31,9 @@ export default function App() {
             {/* Redirect root "/" to "/expenses" so there's always a default page */}
             <Route index element={<Navigate to="/expenses" replace />} />
             <Route path="expenses" element={<ExpensesPage />} />
-            <Route path="expenses/new" element={<AddExpensePage />} />
+            <Route path="expenses/new" element={<ExpenseFormPage />} />
             <Route path="expenses/:id" element={<ExpenseDetailPage />} />
+            <Route path="expenses/:id/edit" element={<ExpenseFormPage />} />
             <Route path="balances" element={<BalancesPage />} />
             <Route path="friends" element={<FriendsPage />} />
           </Route>

@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { User } from '../types'
+import { queryClient } from '../lib/queryClient'
 
 // What we store after a successful login or register:
 // - token: the JWT string the server gave us (we'll send this with every request)
@@ -22,8 +23,19 @@ export const useAuthStore = create<AuthStore>()(
     (set) => ({
       token: null,
       user: null,
-      setAuth: (token, user) => set({ token, user }),
-      clearAuth: () => set({ token: null, user: null }),
+      // Whenever auth changes — login OR logout — wipe the React Query cache.
+      // Otherwise queries cached under generic keys like ['expenses'] would
+      // bleed between users: User B would briefly see User A's data on login.
+      // The cache is always tied to the currently-authenticated user, so it
+      // should be discarded the moment that user changes.
+      setAuth: (token, user) => {
+        queryClient.clear()
+        set({ token, user })
+      },
+      clearAuth: () => {
+        queryClient.clear()
+        set({ token: null, user: null })
+      },
     }),
     { name: 'fairshare-auth' }, // the localStorage key
   ),

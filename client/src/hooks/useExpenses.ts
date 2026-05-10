@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { getExpenses, getExpense, createExpense } from '../lib/api'
+import { getExpenses, getExpense, createExpense, updateExpense, deleteExpense } from '../lib/api'
 import type { CreateExpenseInput } from '../types'
 
 export function useExpenses() {
@@ -22,8 +22,35 @@ export function useCreateExpense() {
   return useMutation({
     mutationFn: (data: CreateExpenseInput) => createExpense(data),
     onSuccess: () => {
-      // After creating an expense, tell React Query to re-fetch the expenses list
+      // After creating, refresh both the list AND any user's balances —
+      // a new expense changes who owes whom.
       qc.invalidateQueries({ queryKey: ['expenses'] })
+      qc.invalidateQueries({ queryKey: ['balances'] })
+    },
+  })
+}
+
+export function useUpdateExpense() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: CreateExpenseInput }) =>
+      updateExpense(id, data),
+    onSuccess: () => {
+      // Edit can change amounts AND participants → both list and detail
+      // queries need refreshing, plus balances.
+      qc.invalidateQueries({ queryKey: ['expenses'] })
+      qc.invalidateQueries({ queryKey: ['balances'] })
+    },
+  })
+}
+
+export function useDeleteExpense() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => deleteExpense(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['expenses'] })
+      qc.invalidateQueries({ queryKey: ['balances'] })
     },
   })
 }

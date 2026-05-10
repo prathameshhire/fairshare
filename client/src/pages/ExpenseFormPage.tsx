@@ -1,26 +1,57 @@
-import { useState } from 'react'
-import { useNavigate, Link } from 'react-router-dom'
+import { useState, useEffect } from 'react'
+import { useNavigate, useParams, Link } from 'react-router-dom'
 import { useUserFriends } from '../hooks/useUsers'
-import { useCreateExpense } from '../hooks/useExpenses'
+import { useCreateExpense, useExpense, useUpdateExpense } from '../hooks/useExpenses'
 import { useAuthStore } from '../store/useAuthStore'
 
-export function AddExpensePage() {
+// One page, two modes:
+//   /expenses/new       → create mode (no `:id` param)
+//   /expenses/:id/edit  → edit mode (fetches existing expense, prefills form)
+//
+// We pick which mutation to fire (create vs update) based on whether we have an id.
+
+export function ExpenseFormPage() {
   const navigate = useNavigate()
+  const { id } = useParams<{ id: string }>()
+  const isEdit = Boolean(id)
+
   const currentUser = useAuthStore((s) => s.user)
   const currentUserId = currentUser?.id ?? null
-  // Only your accepted friends are eligible to split with — not every user on the platform.
   const { data: friends = [] } = useUserFriends(currentUserId)
-  // The participant picker shows: yourself first, then your friends.
   const splitOptions = currentUser ? [currentUser, ...friends] : friends
+
+  // Edit mode: fetch the existing expense so we can prefill
+  const { data: existingExpense, isLoading: loadingExpense } = useExpense(
+    isEdit ? id! : '',
+  )
+
   const createExpense = useCreateExpense()
+  const updateExpense = useUpdateExpense()
 
   const [description, setDescription] = useState('')
   const [amount, setAmount] = useState('')
-  // Default participants includes the logged-in user — most expenses include the payer.
-  // They can uncheck themselves if they paid for someone else without taking part.
   const [participantIds, setParticipantIds] = useState<string[]>(
     currentUserId ? [currentUserId] : [],
   )
+
+  // Prefill the form once the existing expense loads (edit mode only).
+  // Without this useEffect, the inputs would be empty even when the data arrives.
+  useEffect(() => {
+    if (existingExpense) {
+      setDescription(existingExpense.description)
+      setAmount(String(existingExpense.amount))
+      setParticipantIds(existingExpense.participants.map((p) => p.userId))
+    }
+  }, [existingExpense])
+
+  // Edit-mode authorization check (client-side mirror of the server-side guard):
+  // if we're trying to edit an expense we didn't pay for, redirect away.
+  // The server will reject anyway, but this avoids showing a form they can't submit.
+  useEffect(() => {
+    if (isEdit && existingExpense && existingExpense.paidById !== currentUserId) {
+      navigate(`/expenses/${id}`, { replace: true })
+    }
+  }, [isEdit, existingExpense, currentUserId, id, navigate])
 
   function toggleParticipant(userId: string) {
     setParticipantIds((prev) =>
@@ -40,25 +71,43 @@ export function AddExpensePage() {
     if (!amount || Number(amount) <= 0) return alert('Please enter a valid amount.')
     if (participantIds.length === 0) return alert('Please select at least one participant.')
 
-    // Note: we don't send paidById — the server reads it from the JWT.
-    // The logged-in user is always the payer in V1.
-    await createExpense.mutateAsync({
+    const payload = {
       description: description.trim(),
       amount: Number(amount),
       participantIds,
-    })
+    }
 
-    navigate('/expenses')
+    if (isEdit && id) {
+      await updateExpense.mutateAsync({ id, data: payload })
+      navigate(`/expenses/${id}`)
+    } else {
+      await createExpense.mutateAsync(payload)
+      navigate('/expenses')
+    }
   }
+
+  // Edit mode loading state — show a placeholder until the expense data arrives
+  if (isEdit && loadingExpense) {
+    return <div className="flex justify-center py-16 text-gray-400">Loading expense…</div>
+  }
+
+  // Combined "is something happening" flag — disables the submit button during requests
+  const isSubmitting = createExpense.isPending || updateExpense.isPending
+  const isError = createExpense.isError || updateExpense.isError
 
   return (
     <div className="max-w-lg">
-      {/* Back link */}
-      <Link to="/expenses" className="text-sm text-gray-500 hover:text-green-600 flex items-center gap-1 mb-6">
-        ← Back to expenses
+      {/* Back link — goes to detail in edit mode, list in create mode */}
+      <Link
+        to={isEdit ? `/expenses/${id}` : '/expenses'}
+        className="text-sm text-gray-500 hover:text-green-600 flex items-center gap-1 mb-6"
+      >
+        ← Back
       </Link>
 
-      <h1 className="text-2xl font-bold text-gray-900 mb-6">Add an expense</h1>
+      <h1 className="text-2xl font-bold text-gray-900 mb-6">
+        {isEdit ? 'Edit expense' : 'Add an expense'}
+      </h1>
 
       <form onSubmit={handleSubmit} className="flex flex-col gap-5">
         {/* Description */}
@@ -150,13 +199,17 @@ export function AddExpensePage() {
         {/* Submit */}
         <button
           type="submit"
-          disabled={createExpense.isPending}
+          disabled={isSubmitting}
           className="bg-green-600 text-white font-semibold py-2.5 rounded-lg hover:bg-green-700 transition-colors disabled:opacity-60"
         >
-          {createExpense.isPending ? 'Saving…' : 'Save expense'}
+          {isSubmitting
+            ? 'Saving…'
+            : isEdit
+              ? 'Save changes'
+              : 'Save expense'}
         </button>
 
-        {createExpense.isError && (
+        {isError && (
           <p className="text-sm text-red-500 text-center">
             Something went wrong. Please try again.
           </p>

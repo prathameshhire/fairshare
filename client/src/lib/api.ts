@@ -38,6 +38,9 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
     const body = await res.json().catch(() => ({}))
     throw new Error(body.error ?? `Request failed: ${res.status}`)
   }
+  // 204 No Content (e.g. successful DELETE) has an empty body — calling
+  // res.json() on it would throw "Unexpected end of JSON input".
+  if (res.status === 204) return undefined as T
   return res.json() as Promise<T>
 }
 
@@ -78,6 +81,17 @@ export const getExpense = (id: string) =>
 
 export const createExpense = (data: CreateExpenseInput) =>
   request<Expense>('/api/expenses', { method: 'POST', body: JSON.stringify(data) })
+
+// Update — same body shape as create. Server enforces "only the payer can edit".
+export const updateExpense = (id: string, data: CreateExpenseInput) =>
+  request<Expense>(`/api/expenses/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  })
+
+// Delete — server returns 204 (no body). Server enforces "only the payer can delete".
+export const deleteExpense = (id: string) =>
+  request<void>(`/api/expenses/${id}`, { method: 'DELETE' })
 
 // ── Friendships ────────────────────────────────────────────────────────────
 

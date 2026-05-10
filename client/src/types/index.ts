@@ -11,9 +11,13 @@ export interface ExpenseParticipant {
   expenseId: string
   userId: string
   amountOwed: string   // Prisma Decimal serializes to string in JSON
-  isSettled: boolean
+  isSettled: boolean   // Legacy DB flag — never written to in V1, kept for schema compatibility
   createdAt: string
   user: User
+  // Computed by GET /api/expenses/:id (NOT by GET /api/expenses).
+  // Tells you whether THIS participant has effectively settled with the payer
+  // based on their full shared history. `null` for the payer themselves.
+  isEffectivelySettled?: boolean | null
 }
 
 export interface Expense {

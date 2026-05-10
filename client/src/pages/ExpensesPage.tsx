@@ -37,21 +37,24 @@ function ExpenseCard({ expense }: { expense: Expense }) {
         </div>
       </div>
 
-      {/* Participant chips */}
+      {/* Participant chips — green for the payer, orange for everyone else */}
       <div className="mt-3 flex flex-wrap gap-1.5">
-        {expense.participants.map((p) => (
-          <span
-            key={p.id}
-            className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium ${
-              p.isSettled
-                ? 'bg-gray-100 text-gray-400 line-through'
-                : 'bg-green-50 text-green-700'
-            }`}
-          >
-            {p.user.name}
-            <span className="opacity-75">${Number(p.amountOwed).toFixed(2)}</span>
-          </span>
-        ))}
+        {expense.participants.map((p) => {
+          const isPayer = p.userId === expense.paidById
+          return (
+            <span
+              key={p.id}
+              className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium ${
+                isPayer
+                  ? 'bg-green-50 text-green-700'
+                  : 'bg-amber-50 text-amber-700'
+              }`}
+            >
+              {p.user.name}
+              <span className="opacity-75">${Number(p.amountOwed).toFixed(2)}</span>
+            </span>
+          )
+        })}
       </div>
     </Link>
   )

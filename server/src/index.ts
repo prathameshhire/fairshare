@@ -4,6 +4,7 @@ import cors from 'cors'
 import bcrypt from 'bcryptjs'
 import jwt from 'jsonwebtoken'
 import { prisma } from './lib/prisma'
+import { computeBalancesFor } from './lib/balances'
 
 const app = express()
 const PORT = process.env.PORT || 3000
@@ -198,7 +199,31 @@ app.get('/api/expenses/:id', requireAuth, async (req, res) => {
     res.status(404).json({ error: 'Expense not found' })
     return
   }
-  res.json(expense)
+
+  // Annotate each participant with whether they're "effectively settled" with
+  // the payer. The rule: if the participant's overall balance with the payer
+  // (across ALL their shared expenses + settlements) is ≤ 0, they're settled.
+  //
+  // Why this approach: in real Splitwise, settlements are between two people
+  // overall — they don't pay back specific expenses. So per-expense "settled"
+  // is derived from the relationship-level balance, not stored as a flag.
+  //
+  // The payer themselves gets `isEffectivelySettled: null` — the concept
+  // doesn't apply to them (they didn't owe anyone for this expense; they paid).
+  const payerBalances = await computeBalancesFor(expense.paidById)
+
+  const annotatedParticipants = expense.participants.map((p) => {
+    if (p.userId === expense.paidById) {
+      return { ...p, isEffectivelySettled: null as boolean | null }
+    }
+    const balanceWithPayer = payerBalances[p.userId]
+    // If they don't appear in the payer's balance map, they have no net debt.
+    // If they appear with amount > $0.01, they still owe.
+    const stillOwes = !!balanceWithPayer && balanceWithPayer.amount > 0.01
+    return { ...p, isEffectivelySettled: !stillOwes as boolean | null }
+  })
+
+  res.json({ ...expense, participants: annotatedParticipants })
 })
 
 // Create an expense and split it evenly among participants.
@@ -234,6 +259,98 @@ app.post('/api/expenses', requireAuth, async (req, res) => {
   res.status(201).json(expense)
 })
 
+// Update an expense — only the payer can edit. Replaces description, amount,
+// and participants atomically (in a single transaction). The replacement
+// strategy is "delete all old participant rows, recreate from new list" —
+// simpler than diffing, and we don't lose anything meaningful since the
+// `isSettled` flag isn't used in V1.
+app.put('/api/expenses/:id', requireAuth, async (req, res) => {
+  const id = req.params.id as string
+  const { description, amount, participantIds } = req.body
+
+  // Validate input — fail fast before touching the DB
+  if (!description || typeof description !== 'string' || !description.trim()) {
+    res.status(400).json({ error: 'Description is required' })
+    return
+  }
+  if (!amount || Number(amount) <= 0) {
+    res.status(400).json({ error: 'Amount must be greater than 0' })
+    return
+  }
+  if (!Array.isArray(participantIds) || participantIds.length === 0) {
+    res.status(400).json({ error: 'At least one participant is required' })
+    return
+  }
+
+  // Fetch + auth check: only the payer can edit
+  const existing = await prisma.expense.findUnique({ where: { id } })
+  if (!existing) {
+    res.status(404).json({ error: 'Expense not found' })
+    return
+  }
+  if (existing.paidById !== req.userId) {
+    res.status(403).json({ error: 'Only the payer can edit this expense' })
+    return
+  }
+
+  const amountPerPerson = Math.round((Number(amount) / participantIds.length) * 100) / 100
+
+  // Transaction: delete old participants AND update expense + create new participants.
+  // If anything fails halfway through, the whole thing rolls back — we never end up
+  // in a half-updated state.
+  await prisma.$transaction([
+    prisma.expenseParticipant.deleteMany({ where: { expenseId: id } }),
+    prisma.expense.update({
+      where: { id },
+      data: {
+        description: description.trim(),
+        amount,
+        participants: {
+          create: participantIds.map((userId: string) => ({
+            userId,
+            amountOwed: amountPerPerson,
+          })),
+        },
+      },
+    }),
+  ])
+
+  // Re-fetch with full includes so the response shape matches the create endpoint
+  const updated = await prisma.expense.findUnique({
+    where: { id },
+    include: {
+      paidBy: true,
+      participants: { include: { user: true } },
+    },
+  })
+
+  res.json(updated)
+})
+
+// Delete an expense — only the payer can. Cascades to participant rows in a
+// transaction. Returns 204 No Content (the standard for "successful delete,
+// nothing to return").
+app.delete('/api/expenses/:id', requireAuth, async (req, res) => {
+  const id = req.params.id as string
+
+  const existing = await prisma.expense.findUnique({ where: { id } })
+  if (!existing) {
+    res.status(404).json({ error: 'Expense not found' })
+    return
+  }
+  if (existing.paidById !== req.userId) {
+    res.status(403).json({ error: 'Only the payer can delete this expense' })
+    return
+  }
+
+  await prisma.$transaction([
+    prisma.expenseParticipant.deleteMany({ where: { expenseId: id } }),
+    prisma.expense.delete({ where: { id } }),
+  ])
+
+  res.status(204).send()
+})
+
 // Send a friend request by email. We:
 //   1. Look up the addressee by email (case-insensitive match via lowercased input)
 //   2. Validate: not yourself, not a duplicate of an existing friendship
@@ -263,8 +380,12 @@ app.post('/api/friendships', requireAuth, async (req, res) => {
     return
   }
 
-  // Check for an existing friendship in EITHER direction (you may have
-  // already sent them a request, or they may have already sent you one)
+  // Check for an existing friendship row between these two people (in either
+  // direction). How we react depends on its status:
+  //   - pending: block — there's already an unanswered request
+  //   - accepted: block — they're already friends
+  //   - declined: REVIVE — give them a second chance. Update the row in place
+  //     so we keep at most one friendship row per pair (no orphan history).
   const existing = await prisma.friendship.findFirst({
     where: {
       OR: [
@@ -273,11 +394,35 @@ app.post('/api/friendships', requireAuth, async (req, res) => {
       ],
     },
   })
+
   if (existing) {
-    res.status(409).json({ error: 'A friend request between you two already exists' })
+    if (existing.status === 'pending') {
+      res.status(409).json({ error: 'A friend request is already pending between you two' })
+      return
+    }
+    if (existing.status === 'accepted') {
+      res.status(409).json({ error: 'You are already friends with this person' })
+      return
+    }
+    // status === 'declined' (or any other unknown state — treat as "revive")
+    // Update direction too: whoever is sending NOW is the new requester.
+    const revived = await prisma.friendship.update({
+      where: { id: existing.id },
+      data: {
+        requesterId,
+        addresseeId: addressee.id,
+        status: 'pending',
+      },
+      include: {
+        requester: true,
+        addressee: true,
+      },
+    })
+    res.status(200).json(revived)
     return
   }
 
+  // No prior friendship — create a fresh one.
   const friendship = await prisma.friendship.create({
     data: { requesterId, addresseeId: addressee.id },
     include: {
@@ -393,9 +538,10 @@ app.get('/api/users/:id/friendships', requireAuth, async (req, res) => {
   res.json(friendships)
 })
 
-// Compute net balances for a user — who owes whom and how much
-// Positive amount = the other person owes the current user
-// Negative amount = the current user owes the other person
+// Compute net balances for a user — who owes whom and how much.
+// All the heavy lifting lives in `computeBalancesFor` (lib/balances.ts);
+// this route just enforces auth, calls the helper, and trims near-zero
+// values out of the response.
 app.get('/api/balances/:userId', requireAuth, async (req, res) => {
   const userId = req.params.userId as string
   if (userId !== req.userId) {
@@ -403,77 +549,13 @@ app.get('/api/balances/:userId', requireAuth, async (req, res) => {
     return
   }
 
-  // Query 1: all expenses this user paid, with every participant
-  const paidExpenses = await prisma.expense.findMany({
-    where: { paidById: userId },
-    include: {
-      participants: { include: { user: true } },
-    },
-  })
+  const balanceMap = await computeBalancesFor(userId)
 
-  // Query 2: all expense-participant rows where this user is listed as owing
-  const myParticipations = await prisma.expenseParticipant.findMany({
-    where: { userId },
-    include: {
-      expense: { include: { paidBy: true } },
-    },
-  })
-
-  // Query 3: all settlements this user was part of
-  const settlements = await prisma.settlement.findMany({
-    where: {
-      OR: [{ payerId: userId }, { payeeId: userId }],
-    },
-    include: { payer: true, payee: true },
-  })
-
-  // Balance accumulator: otherUserId → { user, amount }
-  // positive = they owe current user; negative = current user owes them
-  type BalanceEntry = { user: object; amount: number }
-  const acc: Record<string, BalanceEntry> = {}
-
-  // Step 1: expenses I paid — each non-me participant owes me their share
-  for (const expense of paidExpenses) {
-    for (const p of expense.participants) {
-      if (p.userId !== userId) {
-        const id = p.userId
-        if (acc[id]) {
-          acc[id].amount += Number(p.amountOwed)
-        } else {
-          acc[id] = { user: p.user, amount: Number(p.amountOwed) }
-        }
-      }
-    }
-  }
-
-  // Step 2: expenses others paid — I owe the payer my share
-  for (const p of myParticipations) {
-    if (p.expense.paidById !== userId) {
-      const id = p.expense.paidById
-      const delta = -Number(p.amountOwed)
-      if (acc[id]) {
-        acc[id].amount += delta
-      } else {
-        acc[id] = { user: p.expense.paidBy, amount: delta }
-      }
-    }
-  }
-
-  // Step 3: offset by actual settlement payments
-  for (const s of settlements) {
-    const amount = Number(s.amount)
-    if (s.payerId === userId) {
-      const id = s.payeeId
-      if (acc[id]) { acc[id].amount += amount } else { acc[id] = { user: s.payee, amount } }
-    } else {
-      const id = s.payerId
-      if (acc[id]) { acc[id].amount -= amount } else { acc[id] = { user: s.payer, amount: -amount } }
-    }
-  }
-
-  const balances = Object.values(acc)
+  // Filter out entries that are basically zero (avoid showing "$0.00 owed")
+  // and sort by amount descending so people who owe YOU appear first.
+  const balances = Object.values(balanceMap)
     .filter((b) => Math.abs(b.amount) >= 0.01)
-    .sort((a, b) => (b.amount as number) - (a.amount as number))
+    .sort((a, b) => b.amount - a.amount)
 
   res.json(balances)
 })
