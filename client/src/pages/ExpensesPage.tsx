@@ -12,7 +12,7 @@ function ExpenseCard({ expense }: { expense: Expense }) {
   return (
     <Link
       to={`/expenses/${expense.id}`}
-      className="block bg-white rounded-xl border border-gray-200 p-4 hover:border-green-300 hover:shadow-sm transition-all"
+      className="block bg-white rounded-2xl border border-gray-200 p-4 hover:border-green-300 hover:shadow-md hover:shadow-emerald-100/50 transition-all"
     >
       <div className="flex items-start justify-between gap-4">
         {/* Left: description + who paid */}
@@ -37,7 +37,7 @@ function ExpenseCard({ expense }: { expense: Expense }) {
         </div>
       </div>
 
-      {/* Participant chips — green for the payer, orange for everyone else */}
+      {/* Participant chips — green for the payer, amber for everyone else */}
       <div className="mt-3 flex flex-wrap gap-1.5">
         {expense.participants.map((p) => {
           const isPayer = p.userId === expense.paidById
@@ -57,6 +57,28 @@ function ExpenseCard({ expense }: { expense: Expense }) {
         })}
       </div>
     </Link>
+  )
+}
+
+// SVG icon for the empty state — a simple receipt with two lines on it.
+// Stroke-only, inherits color from `text-` on its parent.
+function ReceiptIcon() {
+  return (
+    <svg
+      width="48"
+      height="48"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M6 3 h12 v18 l-3-1.5 -3 1.5 -3-1.5 -3 1.5 z" />
+      <line x1="9" y1="9" x2="15" y2="9" />
+      <line x1="9" y1="13" x2="13" y2="13" />
+    </svg>
   )
 }
 
@@ -81,10 +103,10 @@ export function ExpensesPage() {
     <div>
       {/* Page header */}
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Expenses</h1>
+        <h1 className="text-3xl font-bold text-gray-900 tracking-tight">Expenses</h1>
         <Link
           to="/expenses/new"
-          className="bg-green-600 text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-green-700 transition-colors"
+          className="bg-green-600 text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-green-700 transition-colors shadow-sm shadow-green-200"
         >
           + Add expense
         </Link>
@@ -92,10 +114,14 @@ export function ExpensesPage() {
 
       {/* Empty state */}
       {expenses?.length === 0 && (
-        <div className="text-center py-16 text-gray-400">
-          <p className="text-4xl mb-3">💸</p>
-          <p className="font-medium">No expenses yet</p>
-          <p className="text-sm mt-1">Add one to get started!</p>
+        <div className="text-center py-20">
+          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-emerald-50 text-emerald-500 mb-4">
+            <ReceiptIcon />
+          </div>
+          <p className="font-semibold text-gray-700">No expenses yet</p>
+          <p className="text-sm text-gray-500 mt-1">
+            Add one to start splitting with friends.
+          </p>
         </div>
       )}
 

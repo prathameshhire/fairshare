@@ -9,8 +9,6 @@ import type { Friendship, User } from '../types'
 function AddFriendForm() {
   const sendRequest = useSendFriendRequest()
   const [email, setEmail] = useState('')
-  // We track success and error separately so the user gets a clear, dismissible
-  // confirmation when a request goes through, and a clear error otherwise.
   const [feedback, setFeedback] = useState<
     | { type: 'success'; text: string }
     | { type: 'error'; text: string }
@@ -26,8 +24,6 @@ function AddFriendForm() {
       setFeedback({ type: 'success', text: `Friend request sent to ${email.trim()}.` })
       setEmail('')
     } catch (err) {
-      // The server's error message ("No user is registered with that email", etc.)
-      // gets surfaced directly to the user — no translation needed.
       setFeedback({
         type: 'error',
         text: err instanceof Error ? err.message : 'Could not send request',
@@ -36,8 +32,8 @@ function AddFriendForm() {
   }
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 p-4 mb-6">
-      <h2 className="font-semibold text-gray-800 mb-1">Add a friend</h2>
+    <div className="bg-white rounded-2xl border border-gray-200 shadow-sm shadow-emerald-100/40 p-5 mb-6">
+      <h2 className="font-semibold text-gray-900 mb-1">Add a friend</h2>
       <p className="text-sm text-gray-500 mb-3">
         Enter your friend's email address. They must be registered on Fairshare.
       </p>
@@ -47,12 +43,12 @@ function AddFriendForm() {
           type="email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
+          className="flex-1 border border-gray-300 rounded-lg px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-400 focus:border-transparent transition-shadow"
         />
         <button
           type="submit"
           disabled={sendRequest.isPending || !email.trim()}
-          className="bg-green-600 text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-green-700 transition-colors disabled:opacity-60"
+          className="bg-green-600 text-white text-sm font-semibold px-4 py-2.5 rounded-lg hover:bg-green-700 transition-colors disabled:opacity-60 shadow-sm shadow-green-200"
         >
           {sendRequest.isPending ? 'Sending…' : 'Send request'}
         </button>
@@ -73,15 +69,15 @@ function AddFriendForm() {
   )
 }
 
-// ── Friend cards (one component per status, for clarity) ───────────────────
+// ── Friend cards ───────────────────────────────────────────────────────────
 
 function IncomingRequestCard({ friendship }: { friendship: Friendship }) {
   const respond = useRespondToFriendRequest()
-  // For an incoming request, the OTHER person is the requester
   const other = friendship.requester
 
   return (
-    <div className="bg-white rounded-xl border border-amber-200 p-4 flex items-center gap-3">
+    // The amber accent makes incoming requests visually pop — they need action.
+    <div className="bg-white rounded-2xl border border-amber-200 shadow-sm shadow-amber-100/40 p-4 flex items-center gap-3">
       <UserAvatar name={other.name} size="md" />
       <div className="flex-1 min-w-0">
         <p className="font-semibold text-gray-900">{other.name}</p>
@@ -91,14 +87,14 @@ function IncomingRequestCard({ friendship }: { friendship: Friendship }) {
         <button
           onClick={() => respond.mutate({ id: friendship.id, status: 'accepted' })}
           disabled={respond.isPending}
-          className="text-xs bg-green-600 text-white font-medium px-3 py-1.5 rounded-full hover:bg-green-700 transition-colors disabled:opacity-60"
+          className="text-xs bg-green-600 text-white font-semibold px-3.5 py-1.5 rounded-full hover:bg-green-700 transition-colors disabled:opacity-60 shadow-sm shadow-green-200"
         >
           Accept
         </button>
         <button
           onClick={() => respond.mutate({ id: friendship.id, status: 'declined' })}
           disabled={respond.isPending}
-          className="text-xs border border-gray-300 text-gray-500 font-medium px-3 py-1.5 rounded-full hover:bg-gray-50 transition-colors disabled:opacity-60"
+          className="text-xs border border-gray-300 text-gray-500 font-medium px-3.5 py-1.5 rounded-full hover:bg-gray-50 transition-colors disabled:opacity-60"
         >
           Decline
         </button>
@@ -109,7 +105,7 @@ function IncomingRequestCard({ friendship }: { friendship: Friendship }) {
 
 function FriendCard({ friend, badge }: { friend: User; badge?: 'pending' | null }) {
   return (
-    <div className="bg-white rounded-xl border border-gray-200 p-4 flex items-center gap-3">
+    <div className="bg-white rounded-2xl border border-gray-200 p-4 flex items-center gap-3 hover:shadow-md hover:shadow-emerald-100/50 transition-shadow">
       <UserAvatar name={friend.name} size="md" />
       <div className="flex-1 min-w-0">
         <p className="font-semibold text-gray-900">{friend.name}</p>
@@ -121,6 +117,30 @@ function FriendCard({ friend, badge }: { friend: User; badge?: 'pending' | null 
         </span>
       )}
     </div>
+  )
+}
+
+// ── "No friends yet" empty-state SVG ───────────────────────────────────────
+
+function PeopleIcon() {
+  return (
+    <svg
+      width="48"
+      height="48"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      {/* Two stylized people side by side */}
+      <circle cx="9" cy="9" r="3" />
+      <path d="M3 20 c0-3.3 2.7-6 6-6 s6 2.7 6 6" />
+      <circle cx="17" cy="10" r="2.5" />
+      <path d="M14 17 c1-1.5 2-2.5 3-2.5 s3 1 3 4" />
+    </svg>
   )
 }
 
@@ -141,10 +161,6 @@ export function FriendsPage() {
     )
   }
 
-  // Bucket the friendships by status + direction.
-  // Incoming = pending requests where I'm the addressee (action needed)
-  // Sent = pending requests where I'm the requester (waiting on them)
-  // Accepted = real friends
   const incoming = friendships.filter(
     (f) => f.status === 'pending' && f.addresseeId === currentUserId,
   )
@@ -153,7 +169,6 @@ export function FriendsPage() {
   )
   const accepted = friendships.filter((f) => f.status === 'accepted')
 
-  // Helper: get the "other" person in a friendship (i.e. not me)
   function otherIn(f: Friendship): User {
     return f.requesterId === currentUserId ? f.addressee : f.requester
   }
@@ -162,23 +177,27 @@ export function FriendsPage() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold text-gray-900 mb-6">Friends</h1>
+      <h1 className="text-3xl font-bold text-gray-900 tracking-tight mb-6">Friends</h1>
 
       <AddFriendForm />
 
-      {/* Empty state — only if there's literally nothing to show */}
+      {/* Empty state */}
       {totalRelationships === 0 && (
-        <div className="text-center py-12 text-gray-400">
-          <p className="text-4xl mb-3">👥</p>
-          <p className="font-medium">You haven't added any friends yet.</p>
-          <p className="text-sm mt-1">Add one above to start splitting expenses.</p>
+        <div className="text-center py-16">
+          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-emerald-50 text-emerald-500 mb-4">
+            <PeopleIcon />
+          </div>
+          <p className="font-semibold text-gray-800">You haven't added any friends yet.</p>
+          <p className="text-sm text-gray-500 mt-1">
+            Add one above to start splitting expenses.
+          </p>
         </div>
       )}
 
-      {/* Incoming friend requests — top of list because they need action */}
+      {/* Incoming friend requests */}
       {incoming.length > 0 && (
         <section className="mb-6">
-          <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
+          <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">
             Friend requests ({incoming.length})
           </h2>
           <div className="flex flex-col gap-3">
@@ -192,7 +211,7 @@ export function FriendsPage() {
       {/* Accepted friends */}
       {accepted.length > 0 && (
         <section className="mb-6">
-          <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
+          <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">
             Friends ({accepted.length})
           </h2>
           <div className="flex flex-col gap-3">
@@ -206,7 +225,7 @@ export function FriendsPage() {
       {/* Outgoing pending requests */}
       {sent.length > 0 && (
         <section>
-          <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
+          <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">
             Sent ({sent.length})
           </h2>
           <div className="flex flex-col gap-3">

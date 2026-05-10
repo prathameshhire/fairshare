@@ -4,6 +4,7 @@ import type {
   Friendship,
   Settlement,
   Balance,
+  Group,
   CreateExpenseInput,
   CreateSettlementInput,
 } from '../types'
@@ -114,6 +115,12 @@ export const updateFriendship = (id: string, status: 'accepted' | 'declined') =>
 
 export const getBalances = (userId: string) =>
   request<Balance[]>(`/api/balances/${userId}`)
+
+// ── Groups ─────────────────────────────────────────────────────────────────
+
+export const getGroups = () => request<Group[]>('/api/groups')
+
+export const getGroup = (id: string) => request<Group>(`/api/groups/${id}`)
 
 // ── Settlements ────────────────────────────────────────────────────────────
 

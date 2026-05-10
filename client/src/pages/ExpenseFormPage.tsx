@@ -71,6 +71,10 @@ export function ExpenseFormPage() {
     if (!amount || Number(amount) <= 0) return alert('Please enter a valid amount.')
     if (participantIds.length === 0) return alert('Please select at least one participant.')
 
+    // For now expenses are always created as "personal" (no group). If the
+    // user is editing an expense that already has a groupId, we preserve it;
+    // the backend keeps the existing one untouched on update. Adding a group
+    // picker for new expenses is a Session 10 task.
     const payload = {
       description: description.trim(),
       amount: Number(amount),

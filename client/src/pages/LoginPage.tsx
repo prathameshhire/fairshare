@@ -1,107 +1,162 @@
 import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useLocation, Navigate } from 'react-router-dom'
 import { loginUser } from '../lib/api'
 import { useAuthStore } from '../store/useAuthStore'
+import { LogoMark } from '../components/LogoMark'
+
+// Shape of the router state RegisterPage passes when it sends users here
+// after a successful signup.
+type LoginLocationState = {
+  justRegistered?: boolean
+  email?: string
+  name?: string
+}
 
 export function LoginPage() {
   const navigate = useNavigate()
+  const location = useLocation()
   const setAuth = useAuthStore((s) => s.setAuth)
+  const token = useAuthStore((s) => s.token)
 
-  // Form field state — one piece of state per input
-  const [email, setEmail] = useState('')
+  // If we arrived here from /register, the state will tell us — and give us
+  // the email + name to pre-fill the form and personalize the banner.
+  const fromRegister = (location.state ?? null) as LoginLocationState | null
+
+  const [email, setEmail] = useState(fromRegister?.email ?? '')
   const [password, setPassword] = useState('')
-
-  // Loading and error state for the submit button
   const [isLoading, setIsLoading] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  // We show the "account created" banner once per arrival from /register.
+  // If the user submits a bad login attempt, we hide the banner to make
+  // room for the error — the success message is no longer the most
+  // relevant thing to show them.
+  const [showRegisteredBanner, setShowRegisteredBanner] = useState(
+    Boolean(fromRegister?.justRegistered),
+  )
+
+  // Already-logged-in guard: anyone who reaches /login while authenticated
+  // gets redirected to the app. Important: this must come AFTER every
+  // useState/useNavigate/etc. — React requires hooks to run in the same
+  // order on every render, so we can't conditionally skip them.
+  if (token) {
+    return <Navigate to="/expenses" replace />
+  }
 
   async function handleSubmit(e: React.FormEvent) {
-    // Prevent the browser's default "refresh the page" behavior on form submit
     e.preventDefault()
     setErrorMessage(null)
     setIsLoading(true)
-
     try {
-      // Call POST /api/auth/login — the server returns { token, user }
       const { token, user } = await loginUser({ email, password })
-      // Save both to the auth store (which also persists them to localStorage)
       setAuth(token, user)
-      // Redirect to the main app
       navigate('/expenses')
     } catch (err) {
-      // err is typed as `unknown` in TypeScript — we cast it to Error to read .message
       setErrorMessage(err instanceof Error ? err.message : 'Login failed')
+      // Once they've tried to log in (and failed), the registration banner
+      // is no longer relevant — hide it so the error gets the user's focus.
+      setShowRegisteredBanner(false)
     } finally {
       setIsLoading(false)
     }
   }
 
   return (
-    // Full-screen centered layout
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
-      <div className="w-full max-w-sm">
+    // Gradient background mirrors the landing page so the auth screens feel
+    // like part of the same product, not a separate utility.
+    <div className="min-h-screen bg-gradient-to-b from-white to-emerald-50 flex flex-col">
 
-        {/* App name */}
-        <h1 className="text-center text-3xl font-bold text-green-600 mb-2">Fairshare</h1>
-        <p className="text-center text-sm text-gray-500 mb-8">Sign in to your account</p>
+      {/* Slim top bar with a back-to-home link */}
+      <header className="px-6 pt-6">
+        <Link
+          to="/"
+          className="inline-flex items-center gap-1.5 text-sm font-medium text-gray-500 hover:text-green-700 transition-colors"
+        >
+          ← Back to home
+        </Link>
+      </header>
 
-        {/* Card */}
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
-          <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+      {/* Center the card vertically in the remaining viewport */}
+      <main className="flex-1 flex items-center justify-center px-4 py-8">
+        <div className="w-full max-w-sm">
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Email
-              </label>
-              <input
-                type="email"
-                placeholder="you@example.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
-              />
-            </div>
+          {/* Logo + brand on top, then a friendly headline */}
+          <div className="flex flex-col items-center mb-7">
+            <LogoMark size="md" withWordmark={false} />
+            <h1 className="mt-4 text-2xl font-bold text-gray-900">Welcome back</h1>
+            <p className="text-sm text-gray-500 mt-1">
+              Sign in to keep splitting expenses.
+            </p>
+          </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Password
-              </label>
-              <input
-                type="password"
-                placeholder="••••••••"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
-              />
-            </div>
+          {/* The form card itself */}
+          <div className="bg-white rounded-2xl shadow-lg shadow-emerald-100/50 border border-gray-100 p-7">
+            <form onSubmit={handleSubmit} className="flex flex-col gap-4">
 
-            {/* Error banner — only shown when errorMessage is set */}
-            {errorMessage && (
-              <p className="text-sm text-red-500 text-center bg-red-50 border border-red-100 rounded-lg py-2 px-3">
-                {errorMessage}
-              </p>
-            )}
+              {/* Success banner — shown only when the user just registered.
+                  If we got their name through router state, use the first
+                  word (so "Alice Smith" greets as "Welcome, Alice"). Falls
+                  back to a generic message if the name is missing. */}
+              {showRegisteredBanner && (
+                <p className="text-sm text-green-700 text-center bg-green-50 border border-green-100 rounded-lg py-2 px-3">
+                  {fromRegister?.name
+                    ? `Welcome, ${fromRegister.name.trim().split(' ')[0]}! Sign in to continue.`
+                    : 'Account created. Sign in to continue.'}
+                </p>
+              )}
 
-            <button
-              type="submit"
-              disabled={isLoading}
-              className="bg-green-600 text-white font-semibold py-2.5 rounded-lg hover:bg-green-700 transition-colors disabled:opacity-60"
-            >
-              {isLoading ? 'Signing in…' : 'Sign in'}
-            </button>
-          </form>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                  Email
+                </label>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                  autoComplete="email"
+                  autoFocus
+                  className="w-full border border-gray-300 rounded-lg px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-400 focus:border-transparent transition-shadow"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                  Password
+                </label>
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  autoComplete="current-password"
+                  className="w-full border border-gray-300 rounded-lg px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-400 focus:border-transparent transition-shadow"
+                />
+              </div>
+
+              {errorMessage && (
+                <p className="text-sm text-red-600 text-center bg-red-50 border border-red-100 rounded-lg py-2 px-3">
+                  {errorMessage}
+                </p>
+              )}
+
+              <button
+                type="submit"
+                disabled={isLoading}
+                className="mt-2 bg-green-600 text-white font-semibold py-2.5 rounded-lg hover:bg-green-700 transition-colors disabled:opacity-60 shadow-sm shadow-green-200"
+              >
+                {isLoading ? 'Signing in…' : 'Sign in'}
+              </button>
+            </form>
+          </div>
+
+          <p className="text-center text-sm text-gray-500 mt-6">
+            Don't have an account?{' '}
+            <Link to="/register" className="text-green-700 font-semibold hover:underline">
+              Create one
+            </Link>
+          </p>
         </div>
-
-        {/* Link to register */}
-        <p className="text-center text-sm text-gray-500 mt-5">
-          Don't have an account?{' '}
-          <Link to="/register" className="text-green-600 font-medium hover:underline">
-            Create one
-          </Link>
-        </p>
-      </div>
+      </main>
     </div>
   )
 }

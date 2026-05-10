@@ -27,6 +27,8 @@ export interface Expense {
   currency: string
   paidById: string
   splitType: string
+  // Optional — null for personal (groupless) expenses
+  groupId: string | null
   createdAt: string
   paidBy: User
   participants: ExpenseParticipant[]
@@ -47,9 +49,27 @@ export interface Settlement {
   payerId: string
   payeeId: string
   amount: string       // Prisma Decimal serializes to string in JSON
+  groupId: string | null
   createdAt: string
   payer: User
   payee: User
+}
+
+// A Group is a shared expense context (Barcelona trip, Roommates 2026, etc.)
+// Every expense and settlement belongs to one.
+export interface Group {
+  id: string
+  name: string
+  archivedAt: string | null
+  createdAt: string
+  members: GroupMember[]
+}
+
+export interface GroupMember {
+  groupId: string
+  userId: string
+  joinedAt: string
+  user: User
 }
 
 export interface CreateExpenseInput {
@@ -58,12 +78,16 @@ export interface CreateExpenseInput {
   // Note: paidById is NOT in this shape. The server reads it from the JWT —
   // the logged-in user is always the payer.
   participantIds: string[]
+  // Optional — omit for a personal (groupless) expense
+  groupId?: string
 }
 
 export interface CreateSettlementInput {
   payerId: string
   payeeId: string
   amount: number
+  // Optional — omit for a personal (groupless) settlement
+  groupId?: string
 }
 
 // Computed by GET /api/balances/:userId

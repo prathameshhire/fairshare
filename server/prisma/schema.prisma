@@ -20,6 +20,35 @@ model User {
   expenseParticipants    ExpenseParticipant[]
   settlementsPaid        Settlement[] @relation("payer")
   settlementsReceived    Settlement[] @relation("payee")
+  groupMemberships       GroupMember[]
+}
+
+// A Group is a shared expense context — typically a trip, household, or any
+// recurring scenario where the same people split costs together. Expenses
+// and settlements both belong to a group; balances will eventually be
+// computed per-group.
+model Group {
+  id          String    @id @default(uuid())
+  name        String
+  archivedAt  DateTime? // null = active, set = archived (future use)
+  createdAt   DateTime  @default(now())
+
+  members     GroupMember[]
+  expenses    Expense[]
+  settlements Settlement[]
+}
+
+// Join table — which users are in which groups.
+// Composite primary key on (groupId, userId) prevents duplicate memberships.
+model GroupMember {
+  groupId  String
+  userId   String
+  joinedAt DateTime @default(now())
+
+  group    Group @relation(fields: [groupId], references: [id])
+  user     User  @relation(fields: [userId], references: [id])
+
+  @@id([groupId, userId])
 }
 
 model Friendship {
@@ -41,9 +70,14 @@ model Expense {
   paidById    String
   splitType   String   @default("even")
   createdAt   DateTime @default(now())
+  // Optional — expenses can be "personal" splits between friends without
+  // belonging to a group. Groups are a labeling/organization feature, not
+  // a hard requirement. When null, the expense is a free-floating split.
+  groupId     String?
 
   paidBy       User                 @relation("paidBy", fields: [paidById], references: [id])
   participants ExpenseParticipant[]
+  group        Group?               @relation(fields: [groupId], references: [id])
 }
 
 model ExpenseParticipant {
@@ -64,7 +98,10 @@ model Settlement {
   payeeId   String
   amount    Decimal
   createdAt DateTime @default(now())
+  // Optional, same reasoning as Expense.groupId
+  groupId   String?
 
-  payer User @relation("payer", fields: [payerId], references: [id])
-  payee User @relation("payee", fields: [payeeId], references: [id])
+  payer User   @relation("payer", fields: [payerId], references: [id])
+  payee User   @relation("payee", fields: [payeeId], references: [id])
+  group Group? @relation(fields: [groupId], references: [id])
 }
