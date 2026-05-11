@@ -122,6 +122,36 @@ export const getGroups = () => request<Group[]>('/api/groups')
 
 export const getGroup = (id: string) => request<Group>(`/api/groups/${id}`)
 
+export const createGroup = (name: string) =>
+  request<Group>('/api/groups', {
+    method: 'POST',
+    body: JSON.stringify({ name }),
+  })
+
+// Add a member to a group by their email. The server enforces:
+// inviter is in the group, invitee exists, invitee is the inviter's friend.
+export const addGroupMember = (groupId: string, email: string) =>
+  request<Group>(`/api/groups/${groupId}/members`, {
+    method: 'POST',
+    body: JSON.stringify({ email }),
+  })
+
+// Remove yourself (or someone) from a group
+export const removeGroupMember = (groupId: string, userId: string) =>
+  request<void>(`/api/groups/${groupId}/members/${userId}`, {
+    method: 'DELETE',
+  })
+
+// Update group name and/or archive state
+export const updateGroup = (
+  groupId: string,
+  data: { name?: string; archived?: boolean },
+) =>
+  request<Group>(`/api/groups/${groupId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(data),
+  })
+
 // ── Settlements ────────────────────────────────────────────────────────────
 
 export const createSettlement = (data: CreateSettlementInput) =>

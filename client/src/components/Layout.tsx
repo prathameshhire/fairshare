@@ -54,6 +54,18 @@ export function Layout() {
               Balances
             </NavLink>
             <NavLink
+              to="/groups"
+              className={({ isActive }) =>
+                `px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                  isActive
+                    ? 'bg-white/70 text-green-700 shadow-sm'
+                    : 'text-gray-600 hover:bg-white/40 hover:text-gray-900'
+                }`
+              }
+            >
+              Groups
+            </NavLink>
+            <NavLink
               to="/friends"
               className={({ isActive }) =>
                 `px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${

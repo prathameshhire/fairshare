@@ -9,6 +9,8 @@ import { ExpenseDetailPage } from './pages/ExpenseDetailPage'
 import { ExpenseFormPage } from './pages/ExpenseFormPage'
 import { BalancesPage } from './pages/BalancesPage'
 import { FriendsPage } from './pages/FriendsPage'
+import { GroupsPage } from './pages/GroupsPage'
+import { GroupDetailPage } from './pages/GroupDetailPage'
 
 // Routing structure:
 //
@@ -40,6 +42,8 @@ export default function App() {
             <Route path="expenses/:id/edit" element={<ExpenseFormPage />} />
             <Route path="balances" element={<BalancesPage />} />
             <Route path="friends" element={<FriendsPage />} />
+            <Route path="groups" element={<GroupsPage />} />
+            <Route path="groups/:id" element={<GroupDetailPage />} />
           </Route>
         </Route>
       </Routes>

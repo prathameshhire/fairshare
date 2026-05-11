@@ -1,26 +1,30 @@
 import { useState, useEffect } from 'react'
-import { useNavigate, useParams, Link } from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams, Link } from 'react-router-dom'
 import { useUserFriends } from '../hooks/useUsers'
 import { useCreateExpense, useExpense, useUpdateExpense } from '../hooks/useExpenses'
+import { useGroups } from '../hooks/useGroups'
 import { useAuthStore } from '../store/useAuthStore'
+import type { User } from '../types'
 
 // One page, two modes:
-//   /expenses/new       → create mode (no `:id` param)
-//   /expenses/:id/edit  → edit mode (fetches existing expense, prefills form)
-//
-// We pick which mutation to fire (create vs update) based on whether we have an id.
+//   /expenses/new            → create (Personal by default)
+//   /expenses/new?group=<id> → create in that group (set by "Add expense"
+//                              link from group detail page)
+//   /expenses/:id/edit       → edit (prefilled, group locked)
 
 export function ExpenseFormPage() {
   const navigate = useNavigate()
   const { id } = useParams<{ id: string }>()
+  const [searchParams] = useSearchParams()
   const isEdit = Boolean(id)
 
   const currentUser = useAuthStore((s) => s.user)
   const currentUserId = currentUser?.id ?? null
-  const { data: friends = [] } = useUserFriends(currentUserId)
-  const splitOptions = currentUser ? [currentUser, ...friends] : friends
 
-  // Edit mode: fetch the existing expense so we can prefill
+  const { data: friends = [] } = useUserFriends(currentUserId)
+  const { data: groups = [] } = useGroups()
+
+  // Edit mode: fetch the existing expense to prefill
   const { data: existingExpense, isLoading: loadingExpense } = useExpense(
     isEdit ? id! : '',
   )
@@ -33,25 +37,51 @@ export function ExpenseFormPage() {
   const [participantIds, setParticipantIds] = useState<string[]>(
     currentUserId ? [currentUserId] : [],
   )
+  // null = Personal expense (no group). String = a specific group's id.
+  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(() => {
+    const fromUrl = searchParams.get('group')
+    return fromUrl || null
+  })
 
-  // Prefill the form once the existing expense loads (edit mode only).
-  // Without this useEffect, the inputs would be empty even when the data arrives.
+  // Prefill when an existing expense loads (edit mode only)
   useEffect(() => {
     if (existingExpense) {
       setDescription(existingExpense.description)
       setAmount(String(existingExpense.amount))
       setParticipantIds(existingExpense.participants.map((p) => p.userId))
+      setSelectedGroupId(existingExpense.groupId ?? null)
     }
   }, [existingExpense])
 
-  // Edit-mode authorization check (client-side mirror of the server-side guard):
-  // if we're trying to edit an expense we didn't pay for, redirect away.
-  // The server will reject anyway, but this avoids showing a form they can't submit.
+  // Auth guard: only the payer can edit
   useEffect(() => {
     if (isEdit && existingExpense && existingExpense.paidById !== currentUserId) {
       navigate(`/expenses/${id}`, { replace: true })
     }
   }, [isEdit, existingExpense, currentUserId, id, navigate])
+
+  // Find the currently selected group (if any)
+  const selectedGroup = selectedGroupId
+    ? groups.find((g) => g.id === selectedGroupId)
+    : null
+
+  // The pool of people you can pick as participants depends on the "where":
+  //   - Personal: yourself + your friends
+  //   - Group:    the group's members
+  let splitOptions: User[] = []
+  if (selectedGroup) {
+    splitOptions = selectedGroup.members.map((m) => m.user)
+  } else {
+    splitOptions = currentUser ? [currentUser, ...friends] : friends
+  }
+
+  // When the user switches between Personal/group, previously-selected
+  // participants might not exist in the new pool. Reset to just "you" to
+  // avoid a stale-and-invalid selection.
+  function handleGroupChange(newGroupId: string | null) {
+    setSelectedGroupId(newGroupId)
+    setParticipantIds(currentUserId ? [currentUserId] : [])
+  }
 
   function toggleParticipant(userId: string) {
     setParticipantIds((prev) =>
@@ -71,14 +101,13 @@ export function ExpenseFormPage() {
     if (!amount || Number(amount) <= 0) return alert('Please enter a valid amount.')
     if (participantIds.length === 0) return alert('Please select at least one participant.')
 
-    // For now expenses are always created as "personal" (no group). If the
-    // user is editing an expense that already has a groupId, we preserve it;
-    // the backend keeps the existing one untouched on update. Adding a group
-    // picker for new expenses is a Session 10 task.
+    // Build the payload. Only include groupId if one is selected — the
+    // server reads its absence as "personal expense" (the dual-mode logic).
     const payload = {
       description: description.trim(),
       amount: Number(amount),
       participantIds,
+      ...(selectedGroupId ? { groupId: selectedGroupId } : {}),
     }
 
     if (isEdit && id) {
@@ -86,24 +115,23 @@ export function ExpenseFormPage() {
       navigate(`/expenses/${id}`)
     } else {
       await createExpense.mutateAsync(payload)
-      navigate('/expenses')
+      // After creating in a group, send the user back to that group's page
+      // so they see the new expense in context. Otherwise default to list.
+      navigate(selectedGroupId ? `/groups/${selectedGroupId}` : '/expenses')
     }
   }
 
-  // Edit mode loading state — show a placeholder until the expense data arrives
   if (isEdit && loadingExpense) {
     return <div className="flex justify-center py-16 text-gray-400">Loading expense…</div>
   }
 
-  // Combined "is something happening" flag — disables the submit button during requests
   const isSubmitting = createExpense.isPending || updateExpense.isPending
   const isError = createExpense.isError || updateExpense.isError
 
   return (
     <div className="max-w-lg">
-      {/* Back link — goes to detail in edit mode, list in create mode */}
       <Link
-        to={isEdit ? `/expenses/${id}` : '/expenses'}
+        to={isEdit ? `/expenses/${id}` : selectedGroupId ? `/groups/${selectedGroupId}` : '/expenses'}
         className="text-sm text-gray-500 hover:text-green-600 flex items-center gap-1 mb-6"
       >
         ← Back
@@ -144,7 +172,35 @@ export function ExpenseFormPage() {
           />
         </div>
 
-        {/* Paid by — locked to the logged-in user (per V1: only the payer can log) */}
+        {/* "Where?" picker — Personal or one of your groups.
+            In edit mode this is locked: the group of an existing expense
+            can't be changed via edit. */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Where?
+          </label>
+          {isEdit ? (
+            <div className="w-full border border-gray-200 bg-gray-50 rounded-lg px-3 py-2 text-sm text-gray-700">
+              {selectedGroup ? `Group: ${selectedGroup.name}` : 'Personal'}
+              <span className="ml-2 text-xs text-gray-400">(locked)</span>
+            </div>
+          ) : (
+            <select
+              value={selectedGroupId ?? ''}
+              onChange={(e) => handleGroupChange(e.target.value || null)}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-green-400"
+            >
+              <option value="">Personal (split with friends)</option>
+              {groups.map((g) => (
+                <option key={g.id} value={g.id}>
+                  Group: {g.name}
+                </option>
+              ))}
+            </select>
+          )}
+        </div>
+
+        {/* Paid by */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
             Paid by
@@ -154,15 +210,29 @@ export function ExpenseFormPage() {
           </div>
         </div>
 
-        {/* Participants — yourself + your friends only */}
+        {/* Participants */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">
             Split between
           </label>
 
-          {splitOptions.length === 1 && (
+          {/* Empty-state hints depending on which mode you're in */}
+          {!selectedGroup && splitOptions.length === 1 && (
             <p className="text-sm text-gray-500 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 mb-2">
-              You don't have any friends yet — <Link to="/friends" className="text-green-600 hover:underline">add some</Link> to split expenses with them.
+              You don't have any friends yet —{' '}
+              <Link to="/friends" className="text-green-600 hover:underline">
+                add some
+              </Link>{' '}
+              to split with.
+            </p>
+          )}
+          {selectedGroup && splitOptions.length === 1 && (
+            <p className="text-sm text-gray-500 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 mb-2">
+              You're the only member of this group —{' '}
+              <Link to={`/groups/${selectedGroup.id}`} className="text-green-600 hover:underline">
+                invite friends
+              </Link>{' '}
+              first.
             </p>
           )}
 
@@ -192,7 +262,6 @@ export function ExpenseFormPage() {
             ))}
           </div>
 
-          {/* Per-person preview */}
           {perPerson && (
             <p className="mt-2 text-sm text-green-700 font-medium">
               ${perPerson} each ({participantIds.length} people)
@@ -200,11 +269,10 @@ export function ExpenseFormPage() {
           )}
         </div>
 
-        {/* Submit */}
         <button
           type="submit"
           disabled={isSubmitting}
-          className="bg-green-600 text-white font-semibold py-2.5 rounded-lg hover:bg-green-700 transition-colors disabled:opacity-60"
+          className="bg-green-600 text-white font-semibold py-2.5 rounded-lg hover:bg-green-700 transition-colors disabled:opacity-60 shadow-sm shadow-green-200"
         >
           {isSubmitting
             ? 'Saving…'

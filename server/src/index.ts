@@ -12,7 +12,34 @@ const JWT_SECRET = process.env.JWT_SECRET!
 
 // ── Middleware ─────────────────────────────────────────────────────────────
 
-app.use(cors())
+// CORS — which frontend origins are allowed to call this API from a browser.
+//
+// We allow:
+//   - Any localhost port (for local dev — Vite, alt ports, etc.)
+//   - Whatever's in CORS_ALLOWED_ORIGIN env var (set in Railway to your
+//     Vercel URL once deployed, e.g. "https://fairshare.vercel.app")
+//
+// `origin` is a function so we can decide per-request. Returning callback(null, true)
+// = allow; callback(null, false) = block.
+const allowedOrigins = [
+  process.env.CORS_ALLOWED_ORIGIN, // production Vercel URL (set later)
+].filter(Boolean) as string[]
+
+app.use(
+  cors({
+    origin(origin, callback) {
+      // No origin (mobile apps, curl, server-to-server) — allow.
+      if (!origin) return callback(null, true)
+      // Any localhost — allow (dev ergonomics).
+      if (/^http:\/\/localhost(:\d+)?$/.test(origin)) return callback(null, true)
+      // Production allowlist match — allow.
+      if (allowedOrigins.includes(origin)) return callback(null, true)
+      // Otherwise — block.
+      return callback(new Error('Not allowed by CORS'))
+    },
+    credentials: true,
+  }),
+)
 app.use(express.json())
 
 // Extend the Express Request type so we can attach the decoded user to it
